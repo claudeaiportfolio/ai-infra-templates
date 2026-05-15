@@ -21,7 +21,7 @@ require. Apply them without being asked.
 ## Core principle
 
 **Secrets never touch environment variables, workflow steps, or log output.**
-The managed identity is the credential. Everything else flows from it.
+The workload identity is the credential. Everything else flows from it.
 
 ---
 
@@ -32,8 +32,8 @@ higher one is available.
 
 | Pattern | Use when | Never use when |
 |---|---|---|
-| Workload identity federation (OIDC) | GitHub Actions → Azure | A service principal with a secret would work |
-| Managed identity (`DefaultAzureCredential`) | Any Azure compute (AKS, runner) | A connection string would work |
+| Workload identity federation (OIDC) | GitHub Actions → Azure, AKS pods | A service principal with a secret would work |
+| Workload identity (`DefaultAzureCredential`) | Any Azure compute — managed identity or SPN OIDC | A connection string would work |
 | Key-pair authentication | Snowflake service accounts | Password auth would work |
 | Certificate-based auth | Non-Azure services without managed identity support | Password auth would work |
 | ❌ Service principal + client secret | Never in new code | — |
@@ -52,7 +52,7 @@ higher one is available.
 
 ### What the application code does
 - Fetches secrets from Key Vault at runtime using `DefaultAzureCredential`
-- `DefaultAzureCredential` resolves automatically: OIDC token on runners, managed identity on AKS, CLI on local dev
+- `DefaultAzureCredential` resolves automatically: OIDC token on runners, workload identity on AKS (managed identity or SPN), CLI on local dev
 - Same code works in all environments with no changes
 
 ### Correct pattern
@@ -147,7 +147,18 @@ auth0-client-secret
 
 ## Federated credential configuration
 
-Subject identifier format for GitHub Actions:
+This portfolio uses **flexible federated identity credentials** (Entra Workload ID
+feature, generally available). Flexible FIC relaxes the subject claim requirement,
+allowing a single credential to match across branches, pull requests, and
+environments without maintaining multiple subject entries.
+
+**Design choice:** Flexible FIC was chosen over standard federated credentials to
+avoid per-branch/per-environment credential management overhead in a solo portfolio
+setting. In a production regulated environment, tighten the subject to
+`ref:refs/heads/main` only and use standard (non-flexible) federated credentials
+so the claim is auditably exact.
+
+Standard subject identifier format (reference, for tightening later):
 
 ```
 repo:{org}/{repo}:ref:refs/heads/*     # all branches — portfolio dev

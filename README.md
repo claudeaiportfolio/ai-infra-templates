@@ -10,7 +10,7 @@ repos as a shared security gate.
 
 - Secrets written to `$GITHUB_ENV` without `::add-mask::`
 - Hardcoded credentials, API keys, or private keys
-- Auth anti-patterns (service principal secrets, passwords over managed identity)
+- Auth anti-patterns (service principal secrets, passwords over workload identity federation)
 - Key Vault bypass — secrets passed as env vars instead of fetched at runtime
 - Python: bare exception catches that could hide credential errors
 - Python: missing input validation on externally-facing functions

@@ -75,7 +75,7 @@ means the signal-to-noise ratio is high enough to act on.
 - Credentials or secrets in `$GITHUB_ENV` without `::add-mask::`
 - Hardcoded secrets, passwords, or API keys in any file
 - Auth patterns that should be rejected (service principals with client
-  secrets, passwords instead of key-pair or managed identity)
+  secrets, passwords instead of key-pair or workload identity)
 - Key Vault bypass (secrets passed as env vars instead of fetched at runtime)
 - Python: broad exception catches that could hide credential errors
 - Python: missing input validation on MCP tool functions

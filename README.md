@@ -78,3 +78,9 @@ output format.
 
 Approximately £0.001–0.003 per PR review at current Sonnet 4 pricing.
 Diffs are capped at 40KB to control cost and stay within context limits.
+
+## Other artefacts
+
+- [`agent-evals/`](agent-evals/README.md) — a trace-driven eval framework for
+  agentic AI workloads. Python package, hosted in this repo as a subdirectory.
+  Consumers pin via git tag: see the package README for install instructions.

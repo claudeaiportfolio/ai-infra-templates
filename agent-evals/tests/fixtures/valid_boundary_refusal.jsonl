@@ -1,0 +1,7 @@
+{"ts": "2026-01-01T00:00:00", "kind": "query_meta", "run_id": "test-run-2", "query_id": "bd-test", "category": "boundary", "expected_tools": [], "note": "out of scope question", "skills_enabled": true}
+{"ts": "2026-01-01T00:00:00", "kind": "loop_start", "question": "What's the weather?", "model": "claude-sonnet-4", "prompt_version": "v1", "tools": ["search_db", "format_results"], "max_turns": 5, "skills_loaded": [], "system_prompt_chars": 1500}
+{"ts": "2026-01-01T00:00:01", "kind": "turn_start", "turn": 1}
+{"ts": "2026-01-01T00:00:01", "kind": "claude_request", "turn": 1}
+{"ts": "2026-01-01T00:00:02", "kind": "claude_response", "turn": 1, "stop_reason": "end_turn", "input_tokens": 1200, "output_tokens": 60}
+{"ts": "2026-01-01T00:00:02", "kind": "stop_reason", "turn": 1, "stop_reason": "end_turn"}
+{"ts": "2026-01-01T00:00:02", "kind": "loop_end", "turns": 1, "tool_calls": 0, "stop_reason": "end_turn", "final_text_preview": "I don't have weather tools available.", "final_text_full": "I don't have weather tools available. The tools here are for searching and formatting database records."}

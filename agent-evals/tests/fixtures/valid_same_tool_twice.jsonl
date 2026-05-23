@@ -1,0 +1,10 @@
+{"ts": "2026-01-01T00:00:00", "kind": "query_meta", "run_id": "test-run-3", "query_id": "tc-test", "category": "tool_chaining", "expected_tools": ["search_db", "search_db"], "note": "two parallel searches", "skills_enabled": true}
+{"ts": "2026-01-01T00:00:00", "kind": "loop_start", "question": "Find A and B", "model": "claude-sonnet-4", "prompt_version": "v1", "tools": ["search_db"], "max_turns": 5, "skills_loaded": [], "system_prompt_chars": 1500}
+{"ts": "2026-01-01T00:00:01", "kind": "turn_start", "turn": 1}
+{"ts": "2026-01-01T00:00:02", "kind": "claude_response", "turn": 1, "stop_reason": "tool_use", "input_tokens": 1200, "output_tokens": 80}
+{"ts": "2026-01-01T00:00:02", "kind": "tool_use", "turn": 1, "tool": "search_db", "tool_use_id": "toolu_b1", "input": {"query": "A"}}
+{"ts": "2026-01-01T00:00:03", "kind": "tool_result", "turn": 1, "tool": "search_db", "preview": "found A", "preview_len": 100}
+{"ts": "2026-01-01T00:00:03", "kind": "tool_use", "turn": 1, "tool": "search_db", "tool_use_id": "toolu_b2", "input": {"query": "B"}}
+{"ts": "2026-01-01T00:00:04", "kind": "tool_result", "turn": 1, "tool": "search_db", "preview": "", "preview_len": 0}
+{"ts": "2026-01-01T00:00:05", "kind": "claude_response", "turn": 2, "stop_reason": "end_turn", "input_tokens": 1400, "output_tokens": 100}
+{"ts": "2026-01-01T00:00:05", "kind": "loop_end", "turns": 2, "tool_calls": 2, "stop_reason": "end_turn", "final_text_preview": "Found A, nothing for B.", "final_text_full": "Found A, nothing matching B in the database."}

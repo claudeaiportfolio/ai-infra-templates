@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-evals"
+version = "0.1.0"
+description = "Trace-driven eval framework for agentic AI workloads"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Michaela Links" },
+]
+keywords = ["evals", "agents", "llm", "anthropic", "tracing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+# Core has zero runtime dependencies — Python stdlib only. Harness adapters
+# are optional extras so consumers only pull what they use.
+dependencies = []
+
+[project.optional-dependencies]
+braintrust = ["braintrust>=0.0.80"]
+langfuse = ["langfuse>=2.0"]
+all = ["braintrust>=0.0.80", "langfuse>=2.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+agent-evals-score = "agent_evals.cli.score:main"
+agent-evals-compare = "agent_evals.cli.compare:main"
+
+[project.urls]
+Repository = "https://github.com/claudeaiportfolio/ai-infra-templates"
+Issues = "https://github.com/claudeaiportfolio/ai-infra-templates/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_evals"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PT"]
+ignore = ["E501"]  # line length covered by formatter
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true

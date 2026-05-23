@@ -1,0 +1,19 @@
+{"ts": "2026-01-01T00:00:00", "kind": "query_meta", "run_id": "test-run-1", "query_id": "test-01", "category": "tool_selection", "expected_tools": ["search_db", "format_results"], "note": "", "skills_enabled": true}
+{"ts": "2026-01-01T00:00:00", "kind": "loop_start", "question": "Find me records matching X and format them", "model": "claude-sonnet-4", "prompt_version": "v1", "tools": ["search_db", "format_results", "get_metadata"], "max_turns": 5, "skills_loaded": ["test-skill"], "system_prompt_chars": 1500}
+{"ts": "2026-01-01T00:00:01", "kind": "turn_start", "turn": 1}
+{"ts": "2026-01-01T00:00:01", "kind": "claude_request", "turn": 1}
+{"ts": "2026-01-01T00:00:02", "kind": "claude_response", "turn": 1, "stop_reason": "tool_use", "input_tokens": 1200, "output_tokens": 80}
+{"ts": "2026-01-01T00:00:02", "kind": "stop_reason", "turn": 1, "stop_reason": "tool_use"}
+{"ts": "2026-01-01T00:00:02", "kind": "tool_use", "turn": 1, "tool": "search_db", "tool_use_id": "toolu_a1", "input": {"query": "X", "limit": 10}}
+{"ts": "2026-01-01T00:00:03", "kind": "tool_result", "turn": 1, "tool": "search_db", "preview": "[{...}, {...}]", "preview_len": 250}
+{"ts": "2026-01-01T00:00:03", "kind": "turn_start", "turn": 2}
+{"ts": "2026-01-01T00:00:03", "kind": "claude_request", "turn": 2}
+{"ts": "2026-01-01T00:00:04", "kind": "claude_response", "turn": 2, "stop_reason": "tool_use", "input_tokens": 1450, "output_tokens": 30}
+{"ts": "2026-01-01T00:00:04", "kind": "stop_reason", "turn": 2, "stop_reason": "tool_use"}
+{"ts": "2026-01-01T00:00:04", "kind": "tool_use", "turn": 2, "tool": "format_results", "tool_use_id": "toolu_a2", "input": {"format": "markdown"}}
+{"ts": "2026-01-01T00:00:05", "kind": "tool_result", "turn": 2, "tool": "format_results", "preview": "...", "preview_len": 50}
+{"ts": "2026-01-01T00:00:05", "kind": "turn_start", "turn": 3}
+{"ts": "2026-01-01T00:00:05", "kind": "claude_request", "turn": 3}
+{"ts": "2026-01-01T00:00:06", "kind": "claude_response", "turn": 3, "stop_reason": "end_turn", "input_tokens": 1500, "output_tokens": 120}
+{"ts": "2026-01-01T00:00:06", "kind": "stop_reason", "turn": 3, "stop_reason": "end_turn"}
+{"ts": "2026-01-01T00:00:06", "kind": "loop_end", "turns": 3, "tool_calls": 2, "stop_reason": "end_turn", "final_text_preview": "Here are the results formatted as markdown...", "final_text_full": "Here are the results formatted as markdown:\n\n- record 1\n- record 2"}

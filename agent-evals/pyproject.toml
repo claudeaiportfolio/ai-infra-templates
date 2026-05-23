@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-evals"
-version = "0.1.0"
-description = "Trace-driven eval framework for agentic AI workloads"
+version = "0.2.0"
+description = "Trace-driven eval framework for agentic AI workloads (Layer 1 deterministic + Layer 2 LLM-judge)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -31,9 +31,11 @@ dependencies = []
 [project.optional-dependencies]
 braintrust = ["braintrust>=0.0.80"]
 langfuse = ["langfuse>=2.0"]
-all = ["braintrust>=0.0.80", "langfuse>=2.0"]
+judge = ["anthropic>=0.40"]
+all = ["braintrust>=0.0.80", "langfuse>=2.0", "anthropic>=0.40"]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.24",
     "pytest-cov>=4.0",
     "ruff>=0.4",
     "mypy>=1.0",

@@ -1,8 +1,8 @@
 """Trace-driven eval framework for agentic AI workloads.
 
 Layer 1 (deterministic) scores trace files emitted by an agent loop against
-the query bank metadata. Layer 2 (LLM-judge, deferred) will score synthesis
-quality on rubric criteria.
+the query bank metadata. Layer 2 (LLM-judge) scores synthesis quality on
+rubric criteria — see agent_evals.judge.
 
 Public API:
 
@@ -15,6 +15,11 @@ Public API:
         render_single_run, render_comparison,
     )
 
+    from agent_evals.judge import (
+        JudgeCriterion, JudgeResult, JudgedRun,
+        run_judge, render_judge_run, render_judge_comparison,
+    )
+
 Harness adapters are optional:
 
     from agent_evals.adapters.braintrust import post_run as post_to_braintrust
@@ -25,6 +30,7 @@ ImportError if its SDK isn't installed. Install the relevant extra:
 
     pip install agent-evals[braintrust]
     pip install agent-evals[langfuse]
+    pip install agent-evals[judge]
     pip install agent-evals[all]
 
 Trace schema contract: the loader expects JSONL files with one event per
@@ -51,7 +57,7 @@ from agent_evals.deterministic import (
 from agent_evals.report import render_comparison, render_single_run
 from agent_evals.trace import ToolCall, TraceRecord, TurnUsage, load_directory
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Trace model

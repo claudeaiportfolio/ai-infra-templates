@@ -17,11 +17,11 @@ description = "Azure service FQDN (AOAI / Postgres / Service Bus) — should be 
 regex = '''[a-z0-9][a-z0-9-]*\.(openai\.azure\.com|postgres\.database\.azure\.com|servicebus\.windows\.net)'''
 tags = ["azure", "identifier"]
 
-[[rules]]
-id = "azure-storage-account"
-description = "Generated Azure storage account name"
-regex = '''\b[a-z0-9]{3}st[a-z0-9]{6,}\b'''
-tags = ["azure", "identifier"]
+# NOTE: no generic storage-account rule here on purpose. Azure storage account
+# names (lowercase alnum, 3-24 chars) are indistinguishable from ordinary words
+# by regex (e.g. "constraints"/"substitutes" match a naive `\w{3}st\w{6,}`).
+# Repos with a known generated prefix should add a precise rule in their own
+# .gitleaks.toml, e.g.  regex = '''\bragst[a-z0-9]{6,}\b'''
 
 [[rules]]
 id = "azure-workload-identity-guid"

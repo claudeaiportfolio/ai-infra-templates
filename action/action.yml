@@ -37,10 +37,10 @@ inputs:
 outputs:
   findings-count:
     description: Total number of Claude findings
-    value: ${{ steps.parse.outputs.findings-count }}
+    value: ${{ steps.review.outputs.findings-count }}
   critical-count:
     description: Number of CRITICAL Claude findings
-    value: ${{ steps.parse.outputs.critical-count }}
+    value: ${{ steps.review.outputs.critical-count }}
 
 runs:
   using: composite
@@ -91,20 +91,12 @@ runs:
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
       run: python3 "$GITHUB_ACTION_PATH/review.py"
-
-    - name: Parse findings
-      id: parse
-      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != ''
-      shell: bash
-      run: |
-        FINDINGS='${{ steps.review.outputs.review-output }}'
-        TOTAL=$(echo "$FINDINGS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
-        CRITICAL=$(echo "$FINDINGS" | python3 -c "import json,sys; print(sum(1 for f in json.load(sys.stdin) if f['severity']=='CRITICAL'))")
-        echo "findings-count=$TOTAL" >> "$GITHUB_OUTPUT"
-        echo "critical-count=$CRITICAL" >> "$GITHUB_OUTPUT"
+      # review.py writes review-output / findings-count / critical-count to
+      # $GITHUB_OUTPUT directly, so the LLM JSON (which may contain single
+      # quotes) never round-trips through a shell command.
 
     - name: Post PR comment
-      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && steps.parse.outputs.findings-count != '0'
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && steps.review.outputs.findings-count != '0'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
@@ -115,15 +107,15 @@ runs:
       run: python3 "$GITHUB_ACTION_PATH/post_comment.py"
 
     - name: Fail on critical findings
-      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && steps.parse.outputs.critical-count != '0'
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && steps.review.outputs.critical-count != '0'
       shell: bash
       run: |
-        echo "::error::Security review found ${{ steps.parse.outputs.critical-count }} CRITICAL issue(s). See PR comment for details."
+        echo "::error::Security review found ${{ steps.review.outputs.critical-count }} CRITICAL issue(s). See PR comment for details."
         exit 1
 
     - name: Fail on warnings (if enabled)
-      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && inputs.fail-on-warning == 'true' && steps.parse.outputs.findings-count != '0'
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && inputs.fail-on-warning == 'true' && steps.review.outputs.findings-count != '0'
       shell: bash
       run: |
-        echo "::error::Security review found ${{ steps.parse.outputs.findings-count }} issue(s) and fail-on-warning is enabled."
+        echo "::error::Security review found ${{ steps.review.outputs.findings-count }} issue(s) and fail-on-warning is enabled."
         exit 1

@@ -37,10 +37,13 @@ tags = ["pii", "identity"]
 
 [allowlist]
 description = "Intentionally allowed shared identifiers"
+# NB: terraform/ is deliberately NOT globally allowlisted — gitleaks' default
+# secret rules must still scan .tf/.tfvars (the files most likely to hold infra
+# secrets). The custom *identifier* rules above carry their own per-rule
+# terraform allowlist where needed.
 paths = [
   '''\.venv/''',
   '''build/''',
-  '''terraform/''',     # IaC legitimately defines resource names via variables
   '''docs/''',          # architecture/session docs for human readers
   '''uv\.lock''',
   '''gitleaks-baseline\.toml''',

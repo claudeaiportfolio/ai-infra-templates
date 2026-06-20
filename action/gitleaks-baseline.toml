@@ -1,0 +1,56 @@
+# Org baseline gitleaks config — fallback when a repo ships no .gitleaks.toml.
+#
+# Covers the patterns that are dangerous across every claudeaiportfolio repo:
+# Azure service FQDNs, workload-identity GUIDs, and the operator's name, plus
+# gitleaks' built-in secret rules. Repos with their own resource-name patterns
+# (e.g. generated storage/AOAI names) should commit a repo-level .gitleaks.toml
+# that sets `[extend] useDefault = true` and adds those rules.
+
+title = "claudeaiportfolio baseline secret + identifier denylist"
+
+[extend]
+useDefault = true  # gitleaks' built-in secret rules (API keys, tokens, private keys, …)
+
+[[rules]]
+id = "azure-service-fqdn"
+description = "Azure service FQDN (AOAI / Postgres / Service Bus) — should be rendered/placeholdered, not committed"
+regex = '''[a-z0-9][a-z0-9-]*\.(openai\.azure\.com|postgres\.database\.azure\.com|servicebus\.windows\.net)'''
+tags = ["azure", "identifier"]
+
+# NOTE: no generic storage-account rule here on purpose. Azure storage account
+# names (lowercase alnum, 3-24 chars) are indistinguishable from ordinary words
+# by regex (e.g. "constraints"/"substitutes" match a naive `\w{3}st\w{6,}`).
+# Repos with a known generated prefix should add a precise rule in their own
+# .gitleaks.toml, e.g.  regex = '''\bragst[a-z0-9]{6,}\b'''
+
+[[rules]]
+id = "azure-workload-identity-guid"
+description = "Hardcoded workload-identity client/identity GUID — render via placeholder"
+regex = '''(client-id|identityId):\s*['"]?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'''
+tags = ["azure", "identity"]
+
+[[rules]]
+id = "operator-name-as-db-principal"
+description = "Operator's personal name used as a DB user/login/principal (use a workload identity / env var). Package-author metadata is fine and not matched."
+regex = '''(?i)(user|login|principal)['"]?\s*[:=]\s*['"]?Michaela Links'''
+tags = ["pii", "identity"]
+
+[allowlist]
+description = "Intentionally allowed shared identifiers"
+# NB: terraform/ is deliberately NOT globally allowlisted — gitleaks' default
+# secret rules must still scan .tf/.tfvars (the files most likely to hold infra
+# secrets). The custom *identifier* rules above carry their own per-rule
+# terraform allowlist where needed.
+paths = [
+  '''\.venv/''',
+  '''build/''',
+  '''docs/''',          # architecture/session docs for human readers
+  '''uv\.lock''',
+  '''gitleaks-baseline\.toml''',
+  '''\.gitleaks\.toml''',
+]
+regexes = [
+  '''localdevenv''',                            # shared dev Key Vault name
+  '''[a-z0-9-]+\.dev\.michaelalinks\.com''',    # public ingress hostnames
+  '''michaelalinks\.uk\.auth0\.com''',          # public Auth0 tenant
+]

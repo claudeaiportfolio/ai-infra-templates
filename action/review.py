@@ -17,16 +17,21 @@ MODEL = "claude-sonnet-4-6"
 API_URL = "https://api.anthropic.com/v1/messages"
 
 
-def _write_output(value: str) -> None:
+def _write_outputs(findings: list) -> None:
+    """Write all step outputs here so the LLM JSON never has to round-trip
+    through a shell command (single quotes in findings text break that)."""
+    critical = sum(1 for f in findings if f.get("severity") == "CRITICAL")
     with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-        f.write(f"review-output={value}\n")
+        f.write(f"review-output={json.dumps(findings)}\n")
+        f.write(f"findings-count={len(findings)}\n")
+        f.write(f"critical-count={critical}\n")
 
 
 def main() -> int:
     diff = Path("/tmp/pr_diff.txt").read_text() if Path("/tmp/pr_diff.txt").exists() else ""
     if not diff.strip():
         print("No relevant files changed — skipping security review")
-        _write_output("[]")
+        _write_outputs([])
         return 0
 
     prompt = f"""You are a security reviewer specialising in credential handling,
@@ -115,7 +120,7 @@ PR DIFF:
             findings = []
             break
 
-    _write_output(json.dumps(findings))
+    _write_outputs(findings)
     print(f"Found {len(findings)} issue(s)")
     return 0
 

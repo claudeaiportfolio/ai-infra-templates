@@ -1,16 +1,22 @@
 name: Claude Security Review
 description: >
-  Reviews PR diffs for credential handling issues, secrets hygiene,
-  and auth anti-patterns using Claude. Posts findings as PR comments.
-  CRITICAL findings set a failed check; WARNING findings are advisory only.
+  Two-layer security gate. (1) gitleaks: a deterministic, BLOCKING scan of the
+  working tree for secrets and identifying values (runs on every push and PR).
+  (2) Claude: an advisory LLM review of the PR diff for credential handling,
+  secrets hygiene, and auth anti-patterns, posted as PR comments — CRITICAL
+  findings fail the check, WARNINGs are advisory. The Claude layer is skipped
+  when no anthropic-api-key is supplied or the event isn't a pull_request, so
+  the action can be adopted for the secret gate alone.
 
 inputs:
   anthropic-api-key:
-    description: Anthropic API key
-    required: true
+    description: Anthropic API key. If omitted, the Claude review layer is skipped (gitleaks still runs).
+    required: false
+    default: ""
   github-token:
     description: GitHub token for posting PR comments
-    required: true
+    required: false
+    default: ""
   fail-on-warning:
     description: Whether WARNING severity findings also fail the check
     required: false
@@ -19,20 +25,55 @@ inputs:
     description: Number of context lines to include in the diff
     required: false
     default: "5"
+  gitleaks-config:
+    description: Path to the repo's gitleaks config. Falls back to the action's baseline if absent.
+    required: false
+    default: ".gitleaks.toml"
+  gitleaks-version:
+    description: gitleaks release to pin
+    required: false
+    default: "8.30.1"
 
 outputs:
   findings-count:
-    description: Total number of findings
+    description: Total number of Claude findings
     value: ${{ steps.parse.outputs.findings-count }}
   critical-count:
-    description: Number of CRITICAL findings
+    description: Number of CRITICAL Claude findings
     value: ${{ steps.parse.outputs.critical-count }}
 
 runs:
   using: composite
   steps:
+    # Layer 1 — deterministic, BLOCKING secret/identifier scan. Runs on every
+    # event (push + PR). Scans the working tree (gitleaks `dir`), not history,
+    # so a repo's pre-existing history doesn't fail the gate while still
+    # catching any new leak. Uses the repo's .gitleaks.toml if present, else the
+    # baseline shipped alongside this action.
+    - name: Install gitleaks
+      shell: bash
+      run: |
+        v="${{ inputs.gitleaks-version }}"
+        curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${v}/gitleaks_${v}_linux_x64.tar.gz" \
+          | tar -xz gitleaks
+        sudo mv gitleaks /usr/local/bin/
+
+    - name: gitleaks secret scan
+      shell: bash
+      run: |
+        config="${{ inputs.gitleaks-config }}"
+        if [ ! -f "$config" ]; then
+          echo "No $config in repo — using action baseline."
+          config="$GITHUB_ACTION_PATH/gitleaks-baseline.toml"
+        fi
+        gitleaks dir . --config "$config" --redact --no-banner --exit-code 1
+
+    # Layer 2 — advisory Claude review. PR-only (needs a diff) and only when an
+    # API key is supplied. The Python lives in review.py / post_comment.py so
+    # this file stays valid YAML.
     - name: Get PR diff
       id: diff
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != ''
       shell: bash
       run: |
         git fetch origin ${{ github.base_ref }} --depth=1
@@ -40,230 +81,48 @@ runs:
           --unified=${{ inputs.diff-context-lines }} \
           -- '*.py' '*.yml' '*.yaml' '*.json' '*.toml' '*.sh' \
           | head -c 40000)  # cap at ~40KB to stay within context limits
-
-        # Write to file to avoid shell escaping issues
         echo "$DIFF" > /tmp/pr_diff.txt
-        echo "diff-size=$(wc -c < /tmp/pr_diff.txt)" >> $GITHUB_OUTPUT
+        echo "diff-size=$(wc -c < /tmp/pr_diff.txt)" >> "$GITHUB_OUTPUT"
 
     - name: Run Claude security review
       id: review
-      shell: python3 {0}
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != ''
+      shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
-        GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
-      run: |
-        import json
-        import os
-        import sys
-        import urllib.request
-        import urllib.error
-        from pathlib import Path
-
-        diff = Path("/tmp/pr_diff.txt").read_text()
-
-        if not diff.strip():
-            print("No relevant files changed — skipping security review")
-            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                f.write("review-output=[]\n")
-            sys.exit(0)
-
-        prompt = f"""You are a security reviewer specialising in credential handling,
-secrets hygiene, and authentication patterns in CI/CD pipelines and Python applications.
-
-Review the following PR diff and identify security issues. Focus exclusively on:
-
-1. CREDENTIAL EXPOSURE
-   - Secrets or credentials written to $GITHUB_ENV without ::add-mask::
-   - Hardcoded passwords, API keys, private keys, or tokens in any file
-   - Secrets passed as plain environment variables instead of being fetched
-     at runtime from a secrets manager
-
-2. AUTH ANTI-PATTERNS
-   - Service principal client secrets (should use workload identity federation)
-   - Password-based authentication where key-pair or managed identity is available
-   - Credentials fetched in shell/workflow steps instead of in application code
-     using DefaultAzureCredential or equivalent
-
-3. KEY VAULT / SECRETS MANAGER BYPASS
-   - Secrets sourced from GitHub secrets directly instead of Key Vault at runtime
-   - Secrets stored in .env files committed to the repo
-   - Any pattern that moves a secret out of the secrets manager unnecessarily
-
-4. PYTHON SECURITY HYGIENE
-   - Bare except clauses that could silently swallow credential errors
-   - Missing input validation on functions that accept external input
-   - Logging statements that could expose sensitive values
-
-For each issue found, respond with a JSON array. Each item must have:
-- "severity": "CRITICAL" or "WARNING"
-  - CRITICAL: secret exposure, credential in plaintext, auth bypass
-  - WARNING: anti-pattern, missing validation, style issue with security implications
-- "title": short title (max 60 chars)
-- "description": clear explanation of the issue and why it matters
-- "recommendation": specific fix
-- "file": filename if identifiable from the diff, otherwise null
-- "line_hint": approximate line number if identifiable, otherwise null
-
-If no issues are found, return an empty array: []
-
-Respond with ONLY the JSON array. No preamble, no markdown, no explanation outside the JSON.
-
-PR DIFF:
-{diff}"""
-
-        payload = json.dumps({{
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 2000,
-            "messages": [
-                {{"role": "user", "content": prompt}}
-            ]
-        }}).encode()
-
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=payload,
-            headers={{
-                "Content-Type": "application/json",
-                "x-api-key": os.environ["ANTHROPIC_API_KEY"],
-                "anthropic-version": "2023-06-01",
-            }},
-            method="POST",
-        )
-
-        # Retry once on failure
-        for attempt in range(2):
-            try:
-                with urllib.request.urlopen(req) as response:
-                    data = json.loads(response.read())
-                    raw = data["content"][0]["text"].strip()
-
-                    # Strip markdown fences if present
-                    if raw.startswith("```"):
-                        raw = "\n".join(raw.split("\n")[1:])
-                    if raw.endswith("```"):
-                        raw = "\n".join(raw.split("\n")[:-1])
-
-                    findings = json.loads(raw.strip())
-                    break
-            except (json.JSONDecodeError, KeyError) as e:
-                if attempt == 1:
-                    print(f"Failed to parse Claude response after 2 attempts: {{e}}")
-                    findings = []
-                    break
-                print(f"Parse attempt {{attempt + 1}} failed, retrying...")
-            except urllib.error.HTTPError as e:
-                print(f"API error: {{e.code}} {{e.reason}}")
-                findings = []
-                break
-
-        output = json.dumps(findings)
-        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-            f.write(f"review-output={output}\n")
-
-        print(f"Found {{len(findings)}} issue(s)")
+      run: python3 "$GITHUB_ACTION_PATH/review.py"
 
     - name: Parse findings
       id: parse
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != ''
       shell: bash
       run: |
         FINDINGS='${{ steps.review.outputs.review-output }}'
-        TOTAL=$(echo "$FINDINGS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))")
-        CRITICAL=$(echo "$FINDINGS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for f in d if f['severity']=='CRITICAL'))")
-
-        echo "findings-count=$TOTAL" >> $GITHUB_OUTPUT
-        echo "critical-count=$CRITICAL" >> $GITHUB_OUTPUT
+        TOTAL=$(echo "$FINDINGS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+        CRITICAL=$(echo "$FINDINGS" | python3 -c "import json,sys; print(sum(1 for f in json.load(sys.stdin) if f['severity']=='CRITICAL'))")
+        echo "findings-count=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "critical-count=$CRITICAL" >> "$GITHUB_OUTPUT"
 
     - name: Post PR comment
-      if: steps.parse.outputs.findings-count != '0'
-      shell: python3 {0}
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && steps.parse.outputs.findings-count != '0'
+      shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         FINDINGS: ${{ steps.review.outputs.review-output }}
         DIFF_SIZE: ${{ steps.diff.outputs.diff-size }}
-      run: |
-        import json
-        import os
-        import urllib.request
-
-        findings = json.loads(os.environ["FINDINGS"])
-        diff_size = int(os.environ.get("DIFF_SIZE", 0))
-
-        critical = [f for f in findings if f["severity"] == "CRITICAL"]
-        warnings = [f for f in findings if f["severity"] == "WARNING"]
-
-        lines = [
-            "## 🔍 Claude Security Review",
-            "",
-        ]
-
-        if diff_size >= 39000:
-            lines += [
-                "> ⚠️ **Note:** Diff was truncated at 40KB. Large PRs may have incomplete coverage.",
-                "",
-            ]
-
-        if critical:
-            lines += ["### 🔴 Critical findings — must fix before merge", ""]
-            for f in critical:
-                loc = f"**{f['file']}**" if f.get("file") else "Unknown file"
-                if f.get("line_hint"):
-                    loc += f" (line ~{f['line_hint']})"
-                lines += [
-                    f"#### {f['title']}",
-                    f"**Location:** {loc}",
-                    f"**Issue:** {f['description']}",
-                    f"**Fix:** {f['recommendation']}",
-                    "",
-                ]
-
-        if warnings:
-            lines += ["### 🟡 Warnings — advisory", ""]
-            for f in warnings:
-                loc = f"**{f['file']}**" if f.get("file") else "Unknown file"
-                if f.get("line_hint"):
-                    loc += f" (line ~{f['line_hint']})"
-                lines += [
-                    f"#### {f['title']}",
-                    f"**Location:** {loc}",
-                    f"**Issue:** {f['description']}",
-                    f"**Fix:** {f['recommendation']}",
-                    "",
-                ]
-
-        lines += [
-            "---",
-            f"*Reviewed by Claude · {len(findings)} finding(s) · "
-            f"[Design decisions](../../blob/main/docs/design.md)*",
-        ]
-
-        body = "\n".join(lines)
-
-        payload = json.dumps({"body": body}).encode()
-        req = urllib.request.Request(
-            f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}"
-            f"/issues/{os.environ['PR_NUMBER']}/comments",
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-                "Accept": "application/vnd.github+json",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req) as resp:
-            print(f"Comment posted: {resp.status}")
+      run: python3 "$GITHUB_ACTION_PATH/post_comment.py"
 
     - name: Fail on critical findings
-      if: steps.parse.outputs.critical-count != '0'
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && steps.parse.outputs.critical-count != '0'
       shell: bash
       run: |
         echo "::error::Security review found ${{ steps.parse.outputs.critical-count }} CRITICAL issue(s). See PR comment for details."
         exit 1
 
     - name: Fail on warnings (if enabled)
-      if: inputs.fail-on-warning == 'true' && steps.parse.outputs.findings-count != '0'
+      if: github.event_name == 'pull_request' && inputs.anthropic-api-key != '' && inputs.fail-on-warning == 'true' && steps.parse.outputs.findings-count != '0'
       shell: bash
       run: |
         echo "::error::Security review found ${{ steps.parse.outputs.findings-count }} issue(s) and fail-on-warning is enabled."

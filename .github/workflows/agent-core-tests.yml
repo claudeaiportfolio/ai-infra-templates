@@ -1,0 +1,39 @@
+name: agent-core tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'agent-core/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install package with dev deps
+        run: pip install -e ".[dev]"
+        working-directory: agent-core
+
+      - name: Lint
+        run: ruff check .
+        working-directory: agent-core
+
+      - name: Type-check
+        run: mypy src
+        working-directory: agent-core
+
+      - name: Run tests
+        run: pytest -q
+        working-directory: agent-core

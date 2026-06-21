@@ -77,11 +77,13 @@ runs:
       shell: bash
       run: |
         git fetch origin ${{ github.base_ref }} --depth=1
-        DIFF=$(git diff origin/${{ github.base_ref }}...HEAD \
+        # Write the full diff to a file first, then truncate. Piping git diff
+        # straight into `head -c` makes git receive SIGPIPE once head closes,
+        # which fails the step under `pipefail` on any diff larger than the cap.
+        git diff origin/${{ github.base_ref }}...HEAD \
           --unified=${{ inputs.diff-context-lines }} \
-          -- '*.py' '*.yml' '*.yaml' '*.json' '*.toml' '*.sh' \
-          | head -c 40000)  # cap at ~40KB to stay within context limits
-        echo "$DIFF" > /tmp/pr_diff.txt
+          -- '*.py' '*.yml' '*.yaml' '*.json' '*.toml' '*.sh' > /tmp/pr_diff_full.txt
+        head -c 40000 /tmp/pr_diff_full.txt > /tmp/pr_diff.txt  # cap ~40KB for context
         echo "diff-size=$(wc -c < /tmp/pr_diff.txt)" >> "$GITHUB_OUTPUT"
 
     - name: Run Claude security review

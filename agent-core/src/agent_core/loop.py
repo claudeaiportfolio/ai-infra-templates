@@ -116,10 +116,14 @@ class AgentLoop:
     # apples-to-apples uncached baseline. Default True is the recommended
     # production posture.
     enable_prompt_caching: bool = True
+    # Inject the Anthropic key directly (e.g. fetched from a secrets manager)
+    # instead of forcing it through the process environment. Falls back to
+    # ANTHROPIC_API_KEY when None, which suits local/dev and CI eval runs.
+    api_key: str | None = None
     _consecutive_errors_per_tool: dict[str, int] = field(default_factory=dict)
 
     async def run(self, user_question: str) -> LoopResult:
-        client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        client = AsyncAnthropic(api_key=self.api_key or os.environ.get("ANTHROPIC_API_KEY"))
         tools = self.mcp.tools_for_anthropic()
 
         # Compose the system prompt once per query. The skill loader (if set)

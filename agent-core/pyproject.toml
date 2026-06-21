@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-core"
-version = "0.1.1"
+version = "0.1.2"
 description = "Reusable agent runtime: bounded plan/act/observe loop, MCP tool dispatch, Auth0 M2M, JSONL+OTel tracing, skills"
 readme = "README.md"
 requires-python = ">=3.11"

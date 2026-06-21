@@ -16,7 +16,7 @@ from .skills import Skill, SkillLoader
 from .telemetry import get_tracer, setup_telemetry
 from .tracing import Tracer
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "DEFAULT_SYSTEM_PROMPT",

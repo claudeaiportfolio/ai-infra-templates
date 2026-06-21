@@ -81,6 +81,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "Use them when needed; answer concisely and accurately, grounded in tool results."
 )
 
+# How much of each tool result to keep in the JSONL trace. Large enough that an
+# eval judge can score groundedness against the actual tool output.
+TOOL_RESULT_PREVIEW_CHARS = 8000
+
 
 @dataclass
 class LoopResult:
@@ -328,7 +332,10 @@ class AgentLoop:
                         tool=tool_name,
                         tool_use_id=block.id,
                         preview_len=len(raw_result),
-                        preview=raw_result[:300],
+                        # Carry enough of the result for downstream eval judges to
+                        # score groundedness against the actual tool output (a
+                        # 300-char snippet is too little for retrieval results).
+                        preview=raw_result[:TOOL_RESULT_PREVIEW_CHARS],
                     )
 
                 tool_results.append(

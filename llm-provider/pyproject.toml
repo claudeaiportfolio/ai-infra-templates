@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-provider"
+version = "0.1.0"
+description = "Thin provider seam: one LLMProvider protocol over Claude + OpenAI. Abstracts the coupling surface (messages, tool round-trip, stream contract); passes differentiating features through as opaque config."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Michaela Links" },
+]
+keywords = ["llm", "anthropic", "openai", "provider", "portability", "tool-use"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+# Both SDKs are core: the package's purpose is to host both implementations
+# behind one protocol, and the swap test exercises both arms.
+dependencies = [
+    "anthropic>=0.40",
+    "openai>=1.110",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Repository = "https://github.com/claudeaiportfolio/ai-infra-templates"
+Issues = "https://github.com/claudeaiportfolio/ai-infra-templates/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_provider"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+markers = [
+    "live: hits a real provider API (needs ANTHROPIC_API_KEY / OPENAI_API_KEY); skipped by default",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PT"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+# stream() dispatches on the Anthropic SDK's streamed-event union via runtime
+# `event.type` checks, which mypy can't narrow — same precedent as agent-core.
+disable_error_code = ["union-attr"]

@@ -1,32 +1,33 @@
 """The agent loop.
 
-This is intentionally a manual tool loop on top of the raw Anthropic SDK.
-No agent framework — every decision (when to stop, how to handle errors,
-what to log) is visible. The architecture round will probe these details;
-they should not be hidden behind a library.
+This is intentionally a manual tool loop. No agent framework — every decision
+(when to stop, how to handle errors, what to log) is visible. The architecture
+round will probe these details; they should not be hidden behind a library.
 
-Loop shape (one of the two canonical patterns):
+The provider call goes through the ``llm-provider`` seam (``get_provider()``,
+``LLM_PROVIDER`` env, default ``anthropic``) rather than the raw Anthropic SDK,
+so the loop is provider-portable. Provider-*differentiating* config (Anthropic
+prompt caching) rides through ``ProviderConfig.extra``; the neutral ``Usage``
+surfaces cache tokens. The loop shape, stop handling, and tracing are unchanged
+— on the anthropic path the behaviour is preserved.
 
-    messages = [{"role": "user", "content": question}]
+Loop shape (one of the two canonical patterns), now in neutral types:
+
+    messages = [Message(role="user", content=question)]
     while True:
-        response = await client.messages.create(..., messages=messages, tools=tools)
-        messages.append({"role": "assistant", "content": response.content})
+        completion = await provider.complete(messages, tools=tools, config=config)
+        messages.append(Message(role="assistant", content=[*text, *completion.tool_calls]))
 
-        if response.stop_reason == "end_turn":
+        if completion.stop_reason == "end_turn":
             return final_text
-        if response.stop_reason != "tool_use":
-            return f"unexpected stop_reason: {response.stop_reason}"
+        if completion.stop_reason != "tool_use":
+            return f"unexpected stop_reason: {completion.stop_reason}"
 
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                result = await call_tool(block.name, block.input)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": result,
-                })
-        messages.append({"role": "user", "content": tool_results})
+        results = []
+        for call in completion.tool_calls:
+            result = await call_tool(call.name, call.input)
+            results.append(ToolResultBlock(tool_use_id=call.id, content=result))
+        messages.append(Message(role="tool", content=results))
 
 Key choices made and the reasoning:
 
@@ -36,7 +37,7 @@ Key choices made and the reasoning:
     is_error=True, not raised. The model gets one shot to recover. A
     second consecutive error from the same tool bails out — common AI
     portfolio anti-pattern is to retry indefinitely.
-  - All Claude requests, responses, and tool calls are traced. The trace
+  - All requests, responses, and tool calls are traced. The trace
     file is the input to the eval suite next weekend.
   - Every chat completion and tool invocation opens an OTel span with
     GenAI/MCP semantic-convention attributes (gen_ai.provider.name,
@@ -52,7 +53,16 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from anthropic import AsyncAnthropic
+from llm_provider import (
+    AnthropicProvider,
+    LLMProvider,
+    Message,
+    ProviderConfig,
+    TextBlock,
+    ToolResultBlock,
+    ToolSpec,
+    get_provider,
+)
 from opentelemetry import trace as otel_trace
 
 from agent_core.telemetry import (
@@ -116,15 +126,63 @@ class AgentLoop:
     # apples-to-apples uncached baseline. Default True is the recommended
     # production posture.
     enable_prompt_caching: bool = True
+    # Sampling temperature, forwarded on every provider request. Default 1.0
+    # matches the prior behaviour exactly: the loop used to omit `temperature`
+    # on `messages.create`, so the request ran at the Anthropic API's server
+    # default of 1.0 (also OpenAI's default). Routing through the seam means the
+    # value is now sent explicitly; keeping it at 1.0 preserves byte-identical
+    # behaviour while letting a caller override it.
+    temperature: float = 1.0
     # Inject the Anthropic key directly (e.g. fetched from a secrets manager)
     # instead of forcing it through the process environment. Falls back to
     # ANTHROPIC_API_KEY when None, which suits local/dev and CI eval runs.
+    # Applies to the anthropic provider path; other providers read their own env.
     api_key: str | None = None
     _consecutive_errors_per_tool: dict[str, int] = field(default_factory=dict)
 
+    def _make_provider(self) -> LLMProvider:
+        """Select the provider via ``LLM_PROVIDER`` (default ``anthropic``).
+
+        On the anthropic path the SDK client is built with the injected
+        ``api_key`` (falling back to ``ANTHROPIC_API_KEY``) so the
+        secrets-manager injection feature is preserved without forcing the key
+        through the process environment — byte-identical to the prior client
+        construction. Other providers are constructed by the factory and read
+        their own credentials from the environment.
+        """
+        name = os.environ.get("LLM_PROVIDER", "anthropic").lower()
+        if name == "anthropic":
+            from anthropic import AsyncAnthropic
+
+            return AnthropicProvider(
+                client=AsyncAnthropic(
+                    api_key=self.api_key or os.environ.get("ANTHROPIC_API_KEY")
+                )
+            )
+        return get_provider(name)
+
+    def _tool_specs(self) -> list[ToolSpec]:
+        """Neutral tool list for the provider. Prefers the MCP client's neutral
+        ``tool_specs()`` accessor; falls back to building specs from
+        ``tools_for_anthropic()`` so a consumer that duck-types ``MCPClient``
+        with only the Anthropic accessor (e.g. legacy ``rag-ingestion-platform``)
+        keeps working unchanged."""
+        tool_specs = getattr(self.mcp, "tool_specs", None)
+        if callable(tool_specs):
+            return tool_specs()
+        return [
+            ToolSpec(
+                name=t["name"],
+                description=t.get("description", ""),
+                input_schema=t.get("input_schema")
+                or {"type": "object", "properties": {}},
+            )
+            for t in self.mcp.tools_for_anthropic()
+        ]
+
     async def run(self, user_question: str) -> LoopResult:
-        client = AsyncAnthropic(api_key=self.api_key or os.environ.get("ANTHROPIC_API_KEY"))
-        tools = self.mcp.tools_for_anthropic()
+        provider = self._make_provider()
+        tool_specs = self._tool_specs()
 
         # Compose the system prompt once per query. The skill loader (if set)
         # appends the always-on skill inventory and any skill bodies its
@@ -148,16 +206,17 @@ class AgentLoop:
             question=user_question,
             model=self.model,
             prompt_version=self.prompt_version,
-            tools=[t["name"] for t in tools],
+            tools=[t.name for t in tool_specs],
             max_turns=self.max_turns,
             skills_loaded=loaded_skill_names,
             system_prompt_chars=len(composed_system_prompt),
             prompt_caching_enabled=self.enable_prompt_caching,
         )
 
-        messages: list[dict[str, Any]] = [
-            {"role": "user", "content": user_question}
-        ]
+        # Provider-neutral conversation history. Each turn we hand the full list
+        # to the provider, which translates it to the active SDK's wire format
+        # (Anthropic content blocks / OpenAI tool_calls + role:"tool" messages).
+        messages: list[Message] = [Message(role="user", content=user_question)]
         turn = 0
         tool_call_count = 0
         final_text = ""
@@ -176,107 +235,89 @@ class AgentLoop:
             # follows the spec's "{operation} {model}" convention.
             with _tracer.start_as_current_span(f"chat {self.model}") as chat_span:
                 chat_span.set_attribute(GEN_AI_OPERATION_NAME, "chat")
-                chat_span.set_attribute(GEN_AI_PROVIDER_NAME, "anthropic")
+                chat_span.set_attribute(GEN_AI_PROVIDER_NAME, provider.name)
                 chat_span.set_attribute(GEN_AI_REQUEST_MODEL, self.model)
                 chat_span.set_attribute(
                     GEN_AI_REQUEST_MAX_TOKENS, self.max_tokens_per_turn
                 )
                 chat_span.set_attribute(GENAI_PROMPT_VERSION, self.prompt_version)
-                # Anthropic's API accepts either a bare string for `system`
-                # or a list of typed content blocks. cache_control is only
-                # available on blocks — strings cannot carry cache metadata.
-                # For the uncached A/B arm we pass the string form, which
-                # also exercises the code path a non-caching customer would
-                # run.
-                if self.enable_prompt_caching:
-                    system_param: Any = [
-                        {
-                            "type": "text",
-                            "text": composed_system_prompt,
-                            "cache_control": {"type": "ephemeral"},
-                        }
-                    ]
-                else:
-                    system_param = composed_system_prompt
+                # Prompt caching is provider-*differentiating* config: it rides
+                # through ProviderConfig.extra as the opaque `cache_control` flag
+                # the Anthropic impl reads (it builds the cached system block;
+                # the OpenAI impl pops and ignores it). When caching is off the
+                # Anthropic impl sends the bare-string system form — the exact
+                # uncached A/B-arm path the loop ran before.
+                config = ProviderConfig(
+                    model=self.model,
+                    max_tokens=self.max_tokens_per_turn,
+                    temperature=self.temperature,
+                    system=composed_system_prompt,
+                    extra={"cache_control": True} if self.enable_prompt_caching else {},
+                )
                 chat_span.set_attribute(
                     "gen_ai.prompt.caching_enabled", self.enable_prompt_caching
                 )
                 try:
-                    response = await client.messages.create(
-                        model=self.model,
-                        max_tokens=self.max_tokens_per_turn,
-                        system=system_param,
-                        tools=tools,  # type: ignore[arg-type]  # dict tool schemas are the right runtime shape
-                        messages=messages,  # type: ignore[arg-type]  # dict message blocks are the right runtime shape
+                    completion = await provider.complete(
+                        messages, tools=tool_specs, config=config
                     )
                 except Exception as exc:
                     chat_span.record_exception(exc)
                     chat_span.set_status(otel_trace.StatusCode.ERROR, str(exc))
                     raise
 
-                chat_span.set_attribute(GEN_AI_RESPONSE_MODEL, response.model)
+                chat_span.set_attribute(GEN_AI_RESPONSE_MODEL, completion.model)
                 chat_span.set_attribute(
-                    GEN_AI_USAGE_INPUT_TOKENS, response.usage.input_tokens
+                    GEN_AI_USAGE_INPUT_TOKENS, completion.usage.input_tokens
                 )
                 chat_span.set_attribute(
-                    GEN_AI_USAGE_OUTPUT_TOKENS, response.usage.output_tokens
+                    GEN_AI_USAGE_OUTPUT_TOKENS, completion.usage.output_tokens
                 )
-                # Cache-token usage. The two fields are always set in the
-                # response (zero when caching wasn't hit), so we record them
-                # unconditionally. Cache reads bill at 10% of the normal
+                # Cache-token usage from the neutral Usage. The fields are
+                # int | None (None = "not reported", e.g. on the OpenAI path or
+                # an uncached Anthropic call); we coerce to 0 so the trace/span
+                # shape is unchanged. Cache reads bill at 10% of the normal
                 # input-token rate; cache creation bills at 125%. The eval
                 # pipeline's cache-aware token-cost observer uses these to
                 # compute the effective cost.
-                cache_creation = getattr(
-                    response.usage, "cache_creation_input_tokens", 0
-                ) or 0
-                cache_read = getattr(
-                    response.usage, "cache_read_input_tokens", 0
-                ) or 0
+                cache_creation = completion.usage.cache_creation_input_tokens or 0
+                cache_read = completion.usage.cache_read_input_tokens or 0
                 chat_span.set_attribute("gen_ai.usage.cache_creation_input_tokens", cache_creation)
                 chat_span.set_attribute("gen_ai.usage.cache_read_input_tokens", cache_read)
                 chat_span.set_attribute(
-                    GEN_AI_RESPONSE_FINISH_REASONS, [response.stop_reason or "unknown"]
+                    GEN_AI_RESPONSE_FINISH_REASONS, [completion.stop_reason or "unknown"]
                 )
-                tool_uses_this_turn = sum(
-                    1 for b in response.content if getattr(b, "type", None) == "tool_use"
-                )
+                tool_uses_this_turn = len(completion.tool_calls)
                 chat_span.set_attribute(LLM_TOOL_CALLS_MADE, tool_uses_this_turn)
 
             # Capture a preview of the text content (if any) for the trace.
-            text_chunks = [
-                b.text for b in response.content
-                if getattr(b, "type", None) == "text"
-            ]
-            text_preview = (" ".join(text_chunks))[:300]
+            text_preview = completion.text[:300]
 
             self.tracer.event(
                 "claude_response",
                 turn=turn,
-                stop_reason=response.stop_reason,
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
+                stop_reason=completion.stop_reason,
+                input_tokens=completion.usage.input_tokens,
+                output_tokens=completion.usage.output_tokens,
                 cache_creation_input_tokens=cache_creation,
                 cache_read_input_tokens=cache_read,
                 text_preview=text_preview,
             )
 
-            # Persist assistant turn into the message history exactly as
-            # the API returned it. The Messages API requires the full
-            # content blocks (including tool_use blocks) to be echoed
-            # back; serialising to dicts is the safe way.
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": [b.model_dump() for b in response.content],
-                }
-            )
+            # Persist the assistant turn into the neutral history: its text
+            # (if any) followed by the tool-call blocks. The provider echoes
+            # these back to the SDK in the right wire shape on the next turn.
+            assistant_blocks: list[Any] = []
+            if completion.text:
+                assistant_blocks.append(TextBlock(text=completion.text))
+            assistant_blocks.extend(completion.tool_calls)
+            messages.append(Message(role="assistant", content=assistant_blocks))
 
-            stop_reason = response.stop_reason or "unknown"
+            stop_reason = completion.stop_reason or "unknown"
             self.tracer.event("stop_reason", turn=turn, reason=stop_reason)
 
             if stop_reason == "end_turn":
-                final_text = "\n".join(text_chunks)
+                final_text = completion.text
                 break
 
             if stop_reason != "tool_use":
@@ -284,17 +325,14 @@ class AgentLoop:
                 # We deliberately do NOT auto-retry: a refusal or token cap
                 # is signal, not noise, and the trace should show it.
                 final_text = (
-                    f"[loop ended with stop_reason={stop_reason}]\n"
-                    + "\n".join(text_chunks)
+                    f"[loop ended with stop_reason={stop_reason}]\n" + completion.text
                 )
                 break
 
-            # Execute every tool_use block in this assistant turn.
-            tool_results: list[dict[str, Any]] = []
+            # Execute every tool-call the model requested this turn.
+            tool_results: list[ToolResultBlock] = []
             should_bail = False
-            for block in response.content:
-                if getattr(block, "type", None) != "tool_use":
-                    continue
+            for block in completion.tool_calls:
                 tool_call_count += 1
                 tool_name = block.name
                 tool_input = block.input or {}
@@ -343,15 +381,17 @@ class AgentLoop:
                     )
 
                 tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": raw_result,
-                        "is_error": is_error,
-                    }
+                    ToolResultBlock(
+                        tool_use_id=block.id,
+                        content=raw_result,
+                        is_error=is_error,
+                    )
                 )
 
-            messages.append({"role": "user", "content": tool_results})
+            # A neutral "tool" turn; the provider maps it to the SDK's result
+            # shape (Anthropic: a user turn of tool_result blocks; OpenAI: one
+            # role:"tool" message per result).
+            messages.append(Message(role="tool", content=tool_results))
 
             if should_bail:
                 final_text = (

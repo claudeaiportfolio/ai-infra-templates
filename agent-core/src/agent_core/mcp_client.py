@@ -27,6 +27,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from llm_provider import ToolSpec
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from opentelemetry import trace as otel_trace
@@ -62,6 +63,15 @@ class ToolSchema:
             "description": self.description,
             "input_schema": self.input_schema,
         }
+
+    def to_spec(self) -> ToolSpec:
+        """Provider-neutral form (llm-provider ``ToolSpec``). The provider seam
+        translates this to the active SDK's tool shape."""
+        return ToolSpec(
+            name=self.name,
+            description=self.description,
+            input_schema=self.input_schema,
+        )
 
 
 class MCPClient:
@@ -120,6 +130,11 @@ class MCPClient:
 
     def tools_for_anthropic(self) -> list[dict[str, Any]]:
         return [t.to_anthropic() for t in self._tools]
+
+    def tool_specs(self) -> list[ToolSpec]:
+        """Neutral tool list for the provider seam. Provider-agnostic counterpart
+        to ``tools_for_anthropic`` (which is kept for direct/legacy consumers)."""
+        return [t.to_spec() for t in self._tools]
 
     async def call_tool(
         self,

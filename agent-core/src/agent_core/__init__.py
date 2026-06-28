@@ -5,6 +5,10 @@ bail-on-repeated-errors, MCP tool dispatch, Auth0 M2M auth, dual tracing
 (JSONL for evals + OTel GenAI/MCP spans), Anthropic prompt caching, and
 SKILL.md progressive disclosure. Domain specifics (system prompt, tools) are
 supplied by the consuming project.
+
+The provider call routes through the ``llm-provider`` seam (``LLM_PROVIDER``
+env, default ``anthropic``), so the loop is provider-portable without changing
+its public API; on the anthropic path the behaviour is preserved.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from .skills import Skill, SkillLoader
 from .telemetry import get_tracer, setup_telemetry
 from .tracing import Tracer
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 __all__ = [
     "DEFAULT_SYSTEM_PROMPT",

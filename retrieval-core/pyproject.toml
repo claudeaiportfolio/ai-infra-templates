@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "retrieval-core"
+version = "0.1.0"
+description = "Store-agnostic hybrid retrieval pipeline: RRF fusion + freshness + cross-encoder rerank + budgeted context assembly, with the datastore injected."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Michaela Links" },
+]
+keywords = ["retrieval", "rag", "rrf", "rerank", "pgvector", "hybrid-search"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+# Core has zero runtime dependencies — the datastore, embeddings, reranker HTTP
+# client, and tokenizer are all injected. Optional integrations are extras so
+# consumers only pull what they use; both are imported lazily.
+dependencies = []
+
+[project.optional-dependencies]
+rerank = ["httpx>=0.27"]
+tiktoken = ["tiktoken>=0.7"]
+all = ["httpx>=0.27", "tiktoken>=0.7"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
+    "httpx>=0.27",
+    "tiktoken>=0.7",
+]
+
+[project.urls]
+Repository = "https://github.com/claudeaiportfolio/ai-infra-templates"
+Issues = "https://github.com/claudeaiportfolio/ai-infra-templates/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/retrieval_core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PT", "S"]
+ignore = ["E501"]  # line length covered by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # asserts are the point in tests
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+# tiktoken ships no type stubs; httpx is only touched lazily inside functions.
+ignore_missing_imports = true

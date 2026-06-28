@@ -1,0 +1,39 @@
+name: retrieval-core tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'retrieval-core/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install package with dev deps
+        run: pip install -e ".[dev]"
+        working-directory: retrieval-core
+
+      - name: Lint
+        run: ruff check .
+        working-directory: retrieval-core
+
+      - name: Type-check
+        run: mypy src
+        working-directory: retrieval-core
+
+      - name: Run tests
+        run: pytest -q
+        working-directory: retrieval-core

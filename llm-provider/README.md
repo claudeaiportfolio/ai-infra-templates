@@ -40,6 +40,12 @@ completion = await provider.complete(
 print(completion.text, completion.usage.input_tokens, completion.usage.output_tokens)
 ```
 
+`Usage` also carries optional prompt-caching counts —
+`cache_creation_input_tokens` and `cache_read_input_tokens` (both `int | None`).
+The Claude impl populates them from the SDK; the OpenAI impl leaves them `None`
+(`None` = "not reported", distinct from `0` = "no cache activity"), so a caller
+can build a cache-aware cost panel without provider-specific plumbing.
+
 Streaming yields `StreamEvent`s ending in `MessageDone`:
 
 ```python
@@ -60,7 +66,7 @@ call.
 
 ```toml
 dependencies = [
-    "llm-provider @ git+https://github.com/claudeaiportfolio/ai-infra-templates.git@llm-provider-v0.1.0#subdirectory=llm-provider",
+    "llm-provider @ git+https://github.com/claudeaiportfolio/ai-infra-templates.git@llm-provider-v0.2.0#subdirectory=llm-provider",
 ]
 ```
 

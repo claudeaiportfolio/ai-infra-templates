@@ -80,6 +80,14 @@ class ToolSpec(BaseModel):
 class Usage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
+    # Prompt-caching accounting. Optional and ``None`` by default because only
+    # some providers report it: the Anthropic impl populates both from the SDK
+    # usage object (cache reads bill at ~10% of the input rate, cache creation
+    # at ~125%), while OpenAI's automatic caching isn't surfaced as discrete
+    # token counts, so the OpenAI impl leaves them ``None``. ``None`` means "not
+    # reported" — distinct from ``0`` ("reported, but no cache activity").
+    cache_creation_input_tokens: int | None = None
+    cache_read_input_tokens: int | None = None
 
 
 class Completion(BaseModel):

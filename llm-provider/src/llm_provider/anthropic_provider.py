@@ -106,6 +106,14 @@ def from_anthropic_response(resp: Any) -> Completion:
         usage=Usage(
             input_tokens=resp.usage.input_tokens,
             output_tokens=resp.usage.output_tokens,
+            # Optional on the SDK usage object (absent/None when caching is off);
+            # pass through as-is so None ("not reported") stays distinct from 0.
+            cache_creation_input_tokens=getattr(
+                resp.usage, "cache_creation_input_tokens", None
+            ),
+            cache_read_input_tokens=getattr(
+                resp.usage, "cache_read_input_tokens", None
+            ),
         ),
     )
 
@@ -176,4 +184,12 @@ class AnthropicProvider:
                     usage.output_tokens = event.usage.output_tokens
             final = await stream.get_final_message()
             usage.input_tokens = final.usage.input_tokens
+            # Cache tokens are only on the final aggregated usage, not the
+            # per-event message_delta usage — read them once at the end.
+            usage.cache_creation_input_tokens = getattr(
+                final.usage, "cache_creation_input_tokens", None
+            )
+            usage.cache_read_input_tokens = getattr(
+                final.usage, "cache_read_input_tokens", None
+            )
         yield MessageDone(stop_reason=stop, usage=usage)

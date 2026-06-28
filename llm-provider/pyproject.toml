@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-provider"
-version = "0.1.0"
+version = "0.2.0"
 description = "Thin provider seam: one LLMProvider protocol over Claude + OpenAI. Abstracts the coupling surface (messages, tool round-trip, stream contract); passes differentiating features through as opaque config."
 readme = "README.md"
 requires-python = ">=3.11"

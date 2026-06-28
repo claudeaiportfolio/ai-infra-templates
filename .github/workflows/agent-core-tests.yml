@@ -3,8 +3,12 @@ name: agent-core tests
 on:
   workflow_dispatch:
   pull_request:
+    # agent-core now depends on the sibling llm-provider package (resolved from
+    # the local monorepo path in dev/CI via [tool.uv.sources]), so a change to
+    # either package should re-run these tests.
     paths:
       - 'agent-core/**'
+      - 'llm-provider/**'
 
 permissions:
   contents: read
@@ -22,18 +26,25 @@ jobs:
         with:
           python-version: '3.12'
 
+      # uv honours [tool.uv.sources], which points llm-provider at the local
+      # ../llm-provider sibling. This lets CI pass before the human cuts the
+      # llm-provider-v0.2.0 tag the published dependency pins. (External pip
+      # consumers ignore sources and resolve the git tag from [project.dependencies].)
+      - name: Install uv
+        run: pip install uv
+
       - name: Install package with dev deps
-        run: pip install -e ".[dev]"
+        run: uv sync --extra dev
         working-directory: agent-core
 
       - name: Lint
-        run: ruff check .
+        run: uv run ruff check .
         working-directory: agent-core
 
       - name: Type-check
-        run: mypy src
+        run: uv run mypy src
         working-directory: agent-core
 
       - name: Run tests
-        run: pytest -q
+        run: uv run pytest -q
         working-directory: agent-core

@@ -84,3 +84,7 @@ Diffs are capped at 40KB to control cost and stay within context limits.
 - [`agent-evals/`](agent-evals/README.md) — a trace-driven eval framework for
   agentic AI workloads. Python package, hosted in this repo as a subdirectory.
   Consumers pin via git tag: see the package README for install instructions.
+- [`retrieval-core/`](retrieval-core/README.md) — a store-agnostic hybrid
+  retrieval pipeline (RRF fusion + freshness + cross-encoder rerank + budgeted
+  context assembly), with the datastore injected. Python package, hosted as a
+  subdirectory; consumers pin via git tag.

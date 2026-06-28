@@ -25,7 +25,12 @@ class _FakeAnthropic:
                 content=[SimpleNamespace(type="text", text=self._text)],
                 stop_reason="end_turn",
                 model=kwargs["model"],
-                usage=SimpleNamespace(input_tokens=42, output_tokens=7),
+                usage=SimpleNamespace(
+                    input_tokens=42,
+                    output_tokens=7,
+                    cache_creation_input_tokens=0,
+                    cache_read_input_tokens=900,
+                ),
             )
 
         self.messages = SimpleNamespace(create=create)
@@ -63,3 +68,9 @@ async def test_swap_same_behaviour_on_both_arms():
     # Only the model id should differ between arms.
     assert a.model == "claude-sonnet-4-5"
     assert o.model == "gpt-4o-mini"
+    # Cache tokens are a *deliberate* per-provider divergence (not part of the
+    # neutral identity above): Claude reports them, OpenAI leaves them None.
+    assert a.usage.cache_read_input_tokens == 900
+    assert a.usage.cache_creation_input_tokens == 0
+    assert o.usage.cache_read_input_tokens is None
+    assert o.usage.cache_creation_input_tokens is None

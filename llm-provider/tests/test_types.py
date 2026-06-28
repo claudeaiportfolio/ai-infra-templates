@@ -4,6 +4,7 @@ from llm_provider.types import (
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
+    Usage,
 )
 
 
@@ -17,6 +18,20 @@ def test_tool_blocks_round_trip():
     tu = ToolUseBlock(id="t1", name="search", input={"q": "x"})
     assert tu.type == "tool_use"
     assert ToolResultBlock(tool_use_id="t1", content="r").is_error is False
+
+
+def test_usage_cache_fields_default_to_none():
+    # Additive, backward-compatible: existing fields keep their int defaults and
+    # the new cache fields are optional, defaulting to None ("not reported").
+    u = Usage()
+    assert u.input_tokens == 0
+    assert u.output_tokens == 0
+    assert u.cache_creation_input_tokens is None
+    assert u.cache_read_input_tokens is None
+    # None ("not reported") stays distinct from 0 ("reported, no cache activity").
+    populated = Usage(input_tokens=100, cache_read_input_tokens=0)
+    assert populated.cache_read_input_tokens == 0
+    assert populated.cache_creation_input_tokens is None
 
 
 def test_provider_config_extra_is_opaque():

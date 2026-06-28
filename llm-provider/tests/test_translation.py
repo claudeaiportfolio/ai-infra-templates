@@ -85,6 +85,37 @@ def test_from_anthropic_response():
     assert c.usage.input_tokens == 10
 
 
+def test_from_anthropic_response_populates_cache_tokens():
+    # When Claude reports cache usage, both fields ride through onto neutral Usage.
+    resp = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="hi")],
+        stop_reason="end_turn",
+        model="claude-x",
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=5,
+            cache_creation_input_tokens=200,
+            cache_read_input_tokens=1800,
+        ),
+    )
+    c = ap.from_anthropic_response(resp)
+    assert c.usage.cache_creation_input_tokens == 200
+    assert c.usage.cache_read_input_tokens == 1800
+
+
+def test_from_anthropic_response_cache_tokens_absent_is_none():
+    # Older/uncached responses may not carry the attrs at all → None, not 0.
+    resp = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="hi")],
+        stop_reason="end_turn",
+        model="claude-x",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+    )
+    c = ap.from_anthropic_response(resp)
+    assert c.usage.cache_creation_input_tokens is None
+    assert c.usage.cache_read_input_tokens is None
+
+
 def test_from_openai_response():
     msg = SimpleNamespace(
         content="hello",
@@ -104,3 +135,6 @@ def test_from_openai_response():
     assert c.stop_reason == "tool_use"
     assert c.tool_calls[0].input == {"q": "x"}
     assert c.usage.output_tokens == 5
+    # OpenAI doesn't surface discrete cache-token counts: the impl leaves both None.
+    assert c.usage.cache_creation_input_tokens is None
+    assert c.usage.cache_read_input_tokens is None

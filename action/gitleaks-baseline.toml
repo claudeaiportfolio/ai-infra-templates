@@ -16,6 +16,19 @@ id = "azure-service-fqdn"
 description = "Azure service FQDN (AOAI / Postgres / Service Bus) — should be rendered/placeholdered, not committed"
 regex = '''[a-z0-9][a-z0-9-]*\.(openai\.azure\.com|postgres\.database\.azure\.com|servicebus\.windows\.net)'''
 tags = ["azure", "identifier"]
+# The Private Link DNS zone names (privatelink.<service>...) are Microsoft-published,
+# non-secret constants that are MANDATORY for any real private-endpoint deployment —
+# the zone resource cannot be named anything else. The leftmost label here is the
+# fixed public string "privatelink", never an identifying resource name, so these
+# never leak anything. Exempt them precisely (anchored to the privatelink label +
+# the exact covered service domains) so the rule still fires on account-specific
+# FQDNs like <myserver>.postgres.database.azure.com. Real private endpoints are now
+# a portfolio standard, so this would otherwise false-positive in every infra repo.
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''(?i)\bprivatelink\.(openai\.azure\.com|postgres\.database\.azure\.com|servicebus\.windows\.net)''',
+]
 
 # NOTE: no generic storage-account rule here on purpose. Azure storage account
 # names (lowercase alnum, 3-24 chars) are indistinguishable from ordinary words

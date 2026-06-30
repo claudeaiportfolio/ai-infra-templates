@@ -5,6 +5,16 @@ All notable changes to `agent-core` are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Releases
 are tagged `agent-core-vX.Y.Z`.
 
+## [0.2.1] - 2026-06-30
+
+### Changed
+- Bump the pinned `llm-provider` dependency to `llm-provider-v0.2.1`, which omits
+  `temperature` for models that reject sampling params (Opus 4.7/4.8, Fable,
+  Mythos). Without this, an `AgentLoop` running on `claude-opus-4-8` 400'd
+  ("temperature is deprecated for this model"), because the loop's provider call
+  carried a temperature. No agent-core code change — the fix rides in via the
+  dependency. (Dev/CI still resolves `llm-provider` from the local sibling.)
+
 ## [0.2.0] - 2026-06-28
 
 ### Changed

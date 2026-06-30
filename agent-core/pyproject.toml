@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-core"
-version = "0.2.0"
+version = "0.2.1"
 description = "Reusable agent runtime: bounded plan/act/observe loop, MCP tool dispatch, Auth0 M2M, JSONL+OTel tracing, skills"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,7 +31,7 @@ dependencies = [
     # style. anthropic comes in transitively via llm-provider, but is kept
     # explicit because the loop constructs an AsyncAnthropic client directly to
     # preserve the injected-API-key path.
-    "llm-provider @ git+https://github.com/claudeaiportfolio/ai-infra-templates.git@llm-provider-v0.2.0#subdirectory=llm-provider",
+    "llm-provider @ git+https://github.com/claudeaiportfolio/ai-infra-templates.git@llm-provider-v0.2.1#subdirectory=llm-provider",
     "anthropic>=0.40",
     "mcp>=1.27.1",
     "httpx>=0.28.1",

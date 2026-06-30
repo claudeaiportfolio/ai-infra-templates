@@ -5,6 +5,18 @@ All notable changes to `llm-provider` are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Releases
 are tagged `llm-provider-vX.Y.Z`.
 
+## [0.2.1] - 2026-06-30
+
+### Fixed
+- `AnthropicProvider` no longer sends `temperature` to models that reject sampling
+  params (Opus 4.7/4.8 and Fable/Mythos), which return HTTP 400 ("temperature is
+  deprecated for this model"). Previously the seam was unusable on the current
+  flagship models whenever a caller set a temperature (including the common
+  `temperature=0.0` for determinism). The provider now omits `temperature` for
+  those families — a caller's `ProviderConfig.temperature` is a harmless no-op
+  there — and sends it unchanged for every other model. Surfaced by the
+  credit-risk-monitoring eval smoke test running Arm A on `claude-opus-4-8`.
+
 ## [0.2.0] - 2026-06-28
 
 ### Added

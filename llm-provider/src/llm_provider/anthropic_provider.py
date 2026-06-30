@@ -37,6 +37,22 @@ _STOP: dict[str, StopReason] = {
     "stop_sequence": "stop",
 }
 
+# Sampling controls (temperature/top_p/top_k) were removed on the Opus 4.7/4.8 and
+# Fable/Mythos model families — sending them returns HTTP 400. The seam abstracts
+# that away: it drops the temperature it would otherwise set for those models, so a
+# caller's ``ProviderConfig.temperature`` is a harmless no-op there instead of a
+# hard error. Every other model is unchanged.
+_NO_SAMPLING_PARAMS: tuple[str, ...] = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+
+
+def accepts_sampling_params(model: str) -> bool:
+    return not any(model.startswith(p) for p in _NO_SAMPLING_PARAMS)
+
 
 def to_anthropic_tools(tools: list[ToolSpec] | None) -> list[dict[str, Any]]:
     return [
@@ -137,11 +153,14 @@ class AnthropicProvider:
         kwargs: dict[str, Any] = {
             "model": cfg.model,
             "max_tokens": cfg.max_tokens,
-            "temperature": cfg.temperature,
             "system": system_param(messages, cfg, cache),
             "messages": to_anthropic_messages(messages),
             **extra,
         }
+        # Only send temperature to models that still accept sampling params
+        # (omitting it for Opus 4.7/4.8 / Fable / Mythos, which 400 on it).
+        if accepts_sampling_params(cfg.model):
+            kwargs["temperature"] = cfg.temperature
         anthropic_tools = to_anthropic_tools(tools)
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools

@@ -138,3 +138,17 @@ def test_from_openai_response():
     # OpenAI doesn't surface discrete cache-token counts: the impl leaves both None.
     assert c.usage.cache_creation_input_tokens is None
     assert c.usage.cache_read_input_tokens is None
+
+
+def test_temperature_omitted_for_removed_sampling_param_models():
+    # Opus 4.7/4.8 / Fable / Mythos reject sampling params (HTTP 400): the seam
+    # must NOT send temperature even when the config carries one.
+    prov = ap.AnthropicProvider(client=SimpleNamespace())
+    msgs = [Message(role="user", content="u")]
+    for model in ("claude-opus-4-8", "claude-opus-4-7", "claude-fable-5"):
+        k = prov._request_kwargs(msgs, None, ProviderConfig(model=model, temperature=0.0))
+        assert "temperature" not in k, model
+    # Models that still accept it receive temperature unchanged.
+    for model in ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"):
+        k = prov._request_kwargs(msgs, None, ProviderConfig(model=model, temperature=0.0))
+        assert k["temperature"] == 0.0, model
